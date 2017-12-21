@@ -18,6 +18,7 @@
 #define _E1000E_NETMDEV_H_
 
 #include <linux/netdevice.h>
+#include <linux/net_mdev.h>
 
 void e1000e_register_netmdev(struct device *dev);
 void e1000e_unregister_netmdev(struct device *dev);
