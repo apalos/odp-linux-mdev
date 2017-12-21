@@ -28,10 +28,12 @@
 #include <linux/of_net.h>
 #include <linux/pci.h>
 #include <linux/bpf.h>
+#include <linux/net_mdev.h>
 
 /* Local includes */
 #include "i40e.h"
 #include "i40e_diag.h"
+#include "i40e_mdev.h"
 #include <net/udp_tunnel.h>
 /* All i40e tracepoints are defined by the include below, which
  * must be included exactly once across the whole kernel with
@@ -113,6 +115,77 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 
 static struct workqueue_struct *i40e_wq;
+
+#ifdef CONFIG_SYSFS
+static ssize_t rx_queue_doorbell_offset_show(struct netdev_rx_queue *queue,
+					     struct rx_queue_attribute
+					     *attribute, char *buf)
+{
+	struct i40e_netdev_priv *np = netdev_priv(queue->dev);
+	struct i40e_vsi *vsi = np->vsi;
+	struct i40e_hw *hw = &vsi->back->hw;
+	unsigned int rxq_idx = get_netdev_rx_queue_index(queue);
+	struct i40e_ring *rxq = vsi->rx_rings[rxq_idx];
+
+	BUG_ON(rxq_idx >= vsi->alloc_queue_pairs);
+
+	return sprintf(buf, "0x%lx", rxq->tail - hw->hw_addr);
+}
+
+static struct rx_queue_attribute rx_queue_doorbell_offset_attribute = {
+	.attr = { .name = "doorbell_offset", .mode = 0444 },
+	.show = rx_queue_doorbell_offset_show
+};
+
+static struct attribute *i40e_sysfs_rx_queue_attrs[] = {
+	&rx_queue_doorbell_offset_attribute.attr,
+	NULL
+};
+
+static const struct attribute_group i40e_sysfs_rx_queue_group = {
+	.name = "i40e",
+	.attrs = i40e_sysfs_rx_queue_attrs
+};
+
+static inline unsigned int get_netdev_tx_queue_index(struct netdev_queue *queue)
+{
+	struct net_device *dev = queue->dev;
+	int index = queue - dev->_tx;
+
+	BUG_ON(index >= dev->num_tx_queues);
+	return index;
+}
+
+static ssize_t tx_queue_doorbell_offset_show(struct netdev_queue *queue,
+					     struct netdev_queue_attribute
+					     *attribute, char *buf)
+{
+	struct i40e_netdev_priv *np = netdev_priv(queue->dev);
+	struct i40e_vsi *vsi = np->vsi;
+	struct i40e_hw *hw = &vsi->back->hw;
+	unsigned int txq_idx = get_netdev_tx_queue_index(queue);
+	struct i40e_ring *txq = vsi->tx_rings[txq_idx];
+
+	BUG_ON(txq_idx >= vsi->alloc_queue_pairs);
+
+	return sprintf(buf, "0x%lx", txq->tail - hw->hw_addr);
+}
+
+static struct netdev_queue_attribute tx_queue_doorbell_offset_attribute = {
+	.attr = { .name = "doorbell_offset", .mode = 0444 },
+	.show = tx_queue_doorbell_offset_show
+};
+
+static struct attribute *i40e_sysfs_tx_queue_attrs[] = {
+	&tx_queue_doorbell_offset_attribute.attr,
+	NULL
+};
+
+static const struct attribute_group i40e_sysfs_tx_queue_group = {
+	.name = "i40e",
+	.attrs = i40e_sysfs_tx_queue_attrs
+};
+#endif /* CONFIG_SYSFS */
 
 /**
  * i40e_allocate_dma_mem_d - OS specific memory alloc for shared code
@@ -317,6 +390,10 @@ static void i40e_tx_timeout(struct net_device *netdev)
 	struct i40e_ring *tx_ring = NULL;
 	unsigned int i, hung_queue = 0;
 	u32 head, val;
+
+	/* do nothing if userspace is in charge of TX */
+	// if (netdev->priv_flags & IFF_VFNETDEV)
+		return;
 
 	pf->tx_timeout_count++;
 
@@ -3476,7 +3553,9 @@ static irqreturn_t i40e_msix_clean_rings(int irq, void *data)
 	if (!q_vector->tx.ring && !q_vector->rx.ring)
 		return IRQ_HANDLED;
 
+#if 0
 	napi_schedule_irqoff(&q_vector->napi);
+#endif
 
 	return IRQ_HANDLED;
 }
@@ -3690,6 +3769,7 @@ static irqreturn_t i40e_intr(int irq, void *data)
 		set_bit(__I40E_CORE_RESET_REQUESTED, pf->state);
 	}
 
+#if 0
 	/* only q0 is used in MSI/Legacy mode, and none are used in MSIX */
 	if (icr0 & I40E_PFINT_ICR0_QUEUE_0_MASK) {
 		struct i40e_vsi *vsi = pf->vsi[pf->lan_vsi];
@@ -3704,6 +3784,7 @@ static irqreturn_t i40e_intr(int irq, void *data)
 		if (!test_bit(__I40E_DOWN, pf->state))
 			napi_schedule_irqoff(&q_vector->napi);
 	}
+#endif
 
 	if (icr0 & I40E_PFINT_ICR0_ADMINQ_MASK) {
 		ena_mask &= ~I40E_PFINT_ICR0_ENA_ADMINQ_MASK;
@@ -5499,13 +5580,23 @@ static int i40e_up_complete(struct i40e_vsi *vsi)
 		return err;
 
 	clear_bit(__I40E_VSI_DOWN, vsi->state);
-	i40e_napi_enable_all(vsi);
-	i40e_vsi_enable_irq(vsi);
+
+#if 1
+	/* do nothing if userspace is in charge of RX/TX */
+	// if (vsi->netdev && !(vsi->netdev->priv_flags & IFF_VFNETDEV)) {
+		i40e_napi_enable_all(vsi);
+		i40e_vsi_enable_irq(vsi);
+	// }
+#endif
 
 	if ((pf->hw.phy.link_info.link_info & I40E_AQ_LINK_UP) &&
 	    (vsi->netdev)) {
 		i40e_print_link_message(vsi, true);
-		netif_tx_start_all_queues(vsi->netdev);
+		/* do nothing if userspace is in charge of TX */
+#if 0
+		if (!(vsi->netdev->priv_flags & IFF_VFNETDEV))
+			netif_tx_start_all_queues(vsi->netdev);
+#endif
 		netif_carrier_on(vsi->netdev);
 	} else if (vsi->netdev) {
 		i40e_print_link_message(vsi, false);
@@ -10063,6 +10154,7 @@ int i40e_vsi_release(struct i40e_vsi *vsi)
 	uplink_seid = vsi->uplink_seid;
 	if (vsi->type != I40E_VSI_SRIOV) {
 		if (vsi->netdev_registered) {
+			i40e_unregister_netmdev(&pf->pdev->dev);
 			vsi->netdev_registered = false;
 			if (vsi->netdev) {
 				/* results in a call to i40e_close() */
@@ -10249,6 +10341,7 @@ static struct i40e_vsi *i40e_vsi_reinit_setup(struct i40e_vsi *vsi)
 err_rings:
 	i40e_vsi_free_q_vectors(vsi);
 	if (vsi->netdev_registered) {
+		i40e_unregister_netmdev(&pf->pdev->dev);
 		vsi->netdev_registered = false;
 		unregister_netdev(vsi->netdev);
 		free_netdev(vsi->netdev);
@@ -10402,9 +10495,24 @@ struct i40e_vsi *i40e_vsi_setup(struct i40e_pf *pf, u8 type,
 		ret = i40e_config_netdev(vsi);
 		if (ret)
 			goto err_netdev;
+#ifdef CONFIG_SYSFS
+		vsi->netdev->sysfs_rx_queue_group = &i40e_sysfs_rx_queue_group;
+#endif /* CONFIG_SYSFS */
 		ret = register_netdev(vsi->netdev);
 		if (ret)
 			goto err_netdev;
+#ifdef CONFIG_SYSFS
+		/* TODO: redo this crap using sysfs_tx_queue_group */
+		for (i = 0; !ret && i < vsi->alloc_queue_pairs; i++) {
+			struct netdev_queue *queue = &vsi->netdev->_tx[i];
+
+			ret = sysfs_create_group(&queue->kobj,
+						 &i40e_sysfs_tx_queue_group);
+		}
+		if (ret)
+			goto err_netdev;
+#endif /* CONFIG_SYSFS */
+		i40e_register_netmdev(&pf->pdev->dev);
 		vsi->netdev_registered = true;
 		netif_carrier_off(vsi->netdev);
 #ifdef CONFIG_I40E_DCB
@@ -10444,6 +10552,7 @@ err_rings:
 	i40e_vsi_free_q_vectors(vsi);
 err_msix:
 	if (vsi->netdev_registered) {
+		i40e_unregister_netmdev(&pf->pdev->dev);
 		vsi->netdev_registered = false;
 		unregister_netdev(vsi->netdev);
 		free_netdev(vsi->netdev);

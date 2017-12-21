@@ -28,6 +28,8 @@
 # Makefile for the Intel(R) Ethernet Connection XL710 (i40e.ko) driver
 #
 
+# linaro add our includes
+ccflags-y += -I$(PWD)/include -DCONFIG_VFIO_MDEV_NET_DEVICE_MODULE
 ccflags-y += -I$(src)
 subdir-ccflags-y += -I$(src)
 
@@ -48,3 +50,4 @@ i40e-objs := i40e_main.o \
 	i40e_virtchnl_pf.o
 
 i40e-$(CONFIG_I40E_DCB) += i40e_dcb.o i40e_dcb_nl.o
+i40e-$(CONFIG_VFIO_MDEV_NET_DEVICE) += i40e_mdev.o

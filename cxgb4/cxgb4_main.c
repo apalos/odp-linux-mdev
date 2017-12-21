@@ -65,6 +65,7 @@
 #include <net/addrconf.h>
 #include <linux/uaccess.h>
 #include <linux/crash_dump.h>
+#include <linux/net_mdev.h>
 
 #include "cxgb4.h"
 #include "cxgb4_filter.h"
@@ -177,6 +178,16 @@ static struct dentry *cxgb4_debugfs_root;
 
 LIST_HEAD(adapter_list);
 DEFINE_MUTEX(uld_mutex);
+
+#if IS_ENABLED(CONFIG_VFIO_MDEV_NET_DEVICE)
+void cxgb4_register_netmdev(struct device *dev);
+void cxgb4_unregister_netmdev(struct device *dev);
+/* Temporary, to be removed once transition is working properly */
+int cxgb4_mdev = 0;
+module_param(cxgb4_mdev, int, 0);
+MODULE_PARM_DESC(cxgb4_mdev, "Support mediated device setup. Traffic will *not* work");
+#endif
+
 
 static void link_report(struct net_device *dev)
 {
@@ -842,7 +853,11 @@ static int setup_sge_queues(struct adapter *adap)
 				adap->msi_idx++;
 			err = t4_sge_alloc_rxq(adap, &q->rspq, false, dev,
 					       adap->msi_idx, &q->fl,
-					       t4_ethrx_handler,
+						/*
+						* Temporary, to be removed once transition is working properly
+						* setting the handler to NULL will not enable napi
+						*/
+					       cxgb4_mdev ? NULL : t4_ethrx_handler,
 					       NULL,
 					       t4_get_tp_ch_map(adap,
 								pi->tx_chan));
@@ -4247,6 +4262,9 @@ static void cfg_queues(struct adapter *adap)
 
 		pi->first_qset = qidx;
 		pi->nqsets = is_kdump_kernel() ? 1 : 8;
+		/* Temporary, to be removed once transition is working properly */
+		if (cxgb4_mdev)
+			pi->nqsets = 1;
 		qidx += pi->nqsets;
 	}
 #else /* !CONFIG_CHELSIO_T4_DCB */
@@ -4830,6 +4848,225 @@ static int cxgb4_iov_configure(struct pci_dev *pdev, int num_vfs)
 }
 #endif
 
+#ifdef CONFIG_SYSFS
+static ssize_t tx_channel_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct port_info *pi = netdev_priv(to_net_dev(dev));
+
+	return sprintf(buf, "0x%x", pi->tx_chan);
+}
+static DEVICE_ATTR(tx_channel, 0444, tx_channel_show, NULL);
+
+static ssize_t phys_function_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct port_info *pi = netdev_priv(to_net_dev(dev));
+
+	return sprintf(buf, "0x%x", pi->adapter->pf);
+}
+static DEVICE_ATTR(phys_function, 0444, phys_function_show, NULL);
+
+static ssize_t free_list_align_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct port_info *pi = netdev_priv(to_net_dev(dev));
+
+	return sprintf(buf, "0x%x", pi->adapter->sge.fl_align);
+}
+static DEVICE_ATTR(free_list_align, 0444, free_list_align_show, NULL);
+
+static struct attribute *cxgb4_sysfs_attrs[] = {
+	&dev_attr_tx_channel.attr,
+	&dev_attr_phys_function.attr,
+	&dev_attr_free_list_align.attr,
+	NULL
+};
+
+static const struct attribute_group cxgb4_sysfs_group = {
+	.attrs = cxgb4_sysfs_attrs
+};
+
+static ssize_t rx_queue_doorbell_fl_offset_show(struct netdev_rx_queue *queue,
+		struct rx_queue_attribute *attribute, char *buf)
+{
+	struct port_info *pi = netdev_priv(queue->dev);
+	unsigned int rxq_idx = get_netdev_rx_queue_index(queue);
+	struct sge_fl *fl = &pi->adapter->sge.ethrxq[rxq_idx].fl;
+	uint32_t doorbell_offset;
+
+	BUG_ON(rxq_idx >= pi->nqsets);
+
+	if (fl->bar2_addr)
+		doorbell_offset =
+		    fl->bar2_addr - pi->adapter->bar2 + SGE_UDB_KDOORBELL;
+	else
+		doorbell_offset = MYPF_REG(SGE_PF_KDOORBELL_A);
+
+	return sprintf(buf, "0x%x", doorbell_offset);
+}
+
+static struct rx_queue_attribute rx_queue_doorbell_fl_offset_attribute = {
+	.attr = { .name = "doorbell_fl_offset", .mode = S_IRUGO },
+	.show = rx_queue_doorbell_fl_offset_show
+};
+
+static ssize_t rx_queue_doorbell_fl_key_show(struct netdev_rx_queue *queue,
+		struct rx_queue_attribute *attribute, char *buf)
+{
+	struct port_info *pi = netdev_priv(queue->dev);
+	unsigned int rxq_idx = get_netdev_rx_queue_index(queue);
+	struct sge_fl *rxq = &pi->adapter->sge.ethrxq[rxq_idx].fl;
+	uint32_t doorbell_key;
+
+	BUG_ON(rxq_idx >= pi->nqsets);
+
+	if (rxq->bar2_addr)
+		doorbell_key = pi->adapter->params.arch.sge_fl_db |
+			QID_V(rxq->bar2_qid);
+	else
+		doorbell_key = pi->adapter->params.arch.sge_fl_db |
+			QID_V(rxq->cntxt_id);
+
+	return sprintf(buf, "0x%x", doorbell_key);
+}
+
+static struct rx_queue_attribute rx_queue_doorbell_fl_key_attribute = {
+	.attr = { .name = "doorbell_fl_key", .mode = S_IRUGO },
+	.show = rx_queue_doorbell_fl_key_show
+};
+
+static ssize_t rx_queue_doorbell_desc_offset_show(struct netdev_rx_queue *queue,
+		struct rx_queue_attribute *attribute, char *buf)
+{
+	struct port_info *pi = netdev_priv(queue->dev);
+	unsigned int rxq_idx = get_netdev_rx_queue_index(queue);
+	struct sge_rspq *q = &pi->adapter->sge.ethrxq[rxq_idx].rspq;
+	uint32_t doorbell_offset;
+
+	BUG_ON(rxq_idx >= pi->nqsets);
+
+	if (q->bar2_addr)
+		doorbell_offset =
+		    q->bar2_addr - pi->adapter->bar2 + SGE_UDB_GTS;
+	else
+		doorbell_offset = MYPF_REG(SGE_PF_GTS_A);
+
+	return sprintf(buf, "0x%x", doorbell_offset);
+}
+
+static struct rx_queue_attribute rx_queue_doorbell_desc_offset_attribute = {
+	.attr = { .name = "doorbell_desc_offset", .mode = S_IRUGO },
+	.show = rx_queue_doorbell_desc_offset_show
+};
+
+static ssize_t rx_queue_doorbell_desc_key_show(struct netdev_rx_queue *queue,
+		struct rx_queue_attribute *attribute, char *buf)
+{
+	struct port_info *pi = netdev_priv(queue->dev);
+	unsigned int rxq_idx = get_netdev_rx_queue_index(queue);
+	struct sge_rspq *q = &pi->adapter->sge.ethrxq[rxq_idx].rspq;
+	uint32_t doorbell_key = QINTR_TIMER_IDX_V(7);
+
+	BUG_ON(rxq_idx >= pi->nqsets);
+
+	/* FIXME disable interrupts instead of delaying them */
+	doorbell_key = SEINTARM_V(doorbell_key);
+
+	if (q->bar2_addr)
+		doorbell_key |= INGRESSQID_V(q->bar2_qid);
+	else
+		doorbell_key |= INGRESSQID_V(q->cntxt_id);
+
+	return sprintf(buf, "0x%x", doorbell_key);
+}
+
+static struct rx_queue_attribute rx_queue_doorbell_desc_key_attribute = {
+	.attr = { .name = "doorbell_desc_key", .mode = S_IRUGO },
+	.show = rx_queue_doorbell_desc_key_show
+};
+
+static struct attribute *cxgb4_sysfs_rx_queue_attrs[] = {
+	&rx_queue_doorbell_fl_offset_attribute.attr,
+	&rx_queue_doorbell_fl_key_attribute.attr,
+	&rx_queue_doorbell_desc_offset_attribute.attr,
+	&rx_queue_doorbell_desc_key_attribute.attr,
+	NULL
+};
+
+static const struct attribute_group cxgb4_sysfs_rx_queue_group = {
+	.name = "cxgb4",
+	.attrs = cxgb4_sysfs_rx_queue_attrs
+};
+
+static inline unsigned int get_netdev_tx_queue_index(struct netdev_queue *queue)
+{
+	struct net_device *dev = queue->dev;
+	int index = queue - dev->_tx;
+
+	BUG_ON(index >= dev->num_tx_queues);
+	return index;
+}
+
+static ssize_t tx_queue_doorbell_desc_offset_show(struct netdev_queue *queue,
+		struct netdev_queue_attribute *attribute, char *buf)
+{
+	struct port_info *pi = netdev_priv(queue->dev);
+	unsigned int txq_idx = get_netdev_tx_queue_index(queue);
+	struct sge_txq *txq = &pi->adapter->sge.ethtxq[txq_idx].q;
+	uint32_t doorbell_offset;
+
+	BUG_ON(txq_idx >= pi->nqsets);
+
+	if (txq->bar2_addr)
+		doorbell_offset = txq->bar2_addr - pi->adapter->bar2 +
+				  SGE_UDB_KDOORBELL;
+	else
+		doorbell_offset = MYPF_REG(SGE_PF_KDOORBELL_A);
+
+	return sprintf(buf, "0x%x", doorbell_offset);
+}
+
+static struct netdev_queue_attribute tx_queue_doorbell_desc_offset_attribute = {
+	.attr = { .name = "doorbell_desc_offset", .mode = S_IRUGO },
+	.show = tx_queue_doorbell_desc_offset_show
+};
+
+static ssize_t tx_queue_doorbell_key_show(struct netdev_queue *queue,
+		struct netdev_queue_attribute *attribute, char *buf)
+{
+	struct port_info *pi = netdev_priv(queue->dev);
+	unsigned int txq_idx = get_netdev_tx_queue_index(queue);
+	struct sge_txq *txq = &pi->adapter->sge.ethtxq[txq_idx].q;
+	uint32_t doorbell_key;
+
+	BUG_ON(txq_idx >= pi->nqsets);
+
+	if (txq->bar2_addr)
+		doorbell_key = QID_V(txq->bar2_qid);
+	else
+		doorbell_key = QID_V(txq->cntxt_id);
+
+	return sprintf(buf, "0x%x", doorbell_key);
+}
+
+static struct netdev_queue_attribute tx_queue_doorbell_key_attribute = {
+	.attr = { .name = "doorbell_desc_key", .mode = S_IRUGO },
+	.show = tx_queue_doorbell_key_show
+};
+
+static struct attribute *cxgb4_sysfs_tx_queue_attrs[] = {
+	&tx_queue_doorbell_desc_offset_attribute.attr,
+	&tx_queue_doorbell_key_attribute.attr,
+	NULL
+};
+
+static const struct attribute_group cxgb4_sysfs_tx_queue_group = {
+	.name = "cxgb4",
+	.attrs = cxgb4_sysfs_tx_queue_attrs
+};
+#endif
+
 static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	int func, i, err, s_qpp, qpp, num_seg;
@@ -5176,8 +5413,17 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	 * register at least one net device.
 	 */
 	for_each_port(adapter, i) {
+#ifdef CONFIG_SYSFS
+		int txq_idx;
+
+		adapter->port[i]->sysfs_groups[0] = &cxgb4_sysfs_group;
+		adapter->port[i]->sysfs_rx_queue_group =
+		    &cxgb4_sysfs_rx_queue_group;
+#endif
+
 		pi = adap2pinfo(adapter, i);
 		adapter->port[i]->dev_port = pi->lport;
+
 		netif_set_real_num_tx_queues(adapter->port[i], pi->nqsets);
 		netif_set_real_num_rx_queues(adapter->port[i], pi->nqsets);
 
@@ -5186,6 +5432,20 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		err = register_netdev(adapter->port[i]);
 		if (err)
 			break;
+
+#ifdef CONFIG_SYSFS
+		/* TODO: redo this crap using sysfs_tx_queue_group */
+		for (txq_idx = 0; !err && txq_idx < pi->nqsets; txq_idx++) {
+			struct netdev_queue *queue = &adapter->port[i]->_tx[txq_idx];
+			err = sysfs_create_group(&queue->kobj,
+						 &cxgb4_sysfs_tx_queue_group);
+		}
+		if (err) {
+			unregister_netdev(adapter->port[i]);
+			break;
+		}
+#endif
+
 		adapter->chan_map[pi->tx_chan] = i;
 		print_port_info(adapter->port[i]);
 	}
@@ -5216,6 +5476,9 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (!is_t4(adapter->params.chip))
 		cxgb4_ptp_init(adapter);
 
+#if IS_ENABLED(CONFIG_VFIO_MDEV_NET_DEVICE)
+	cxgb4_register_netmdev(&pdev->dev);
+#endif
 	print_adapter_info(adapter);
 	setup_fw_sge_queues(adapter);
 	return 0;
@@ -5301,6 +5564,9 @@ static void remove_one(struct pci_dev *pdev)
 {
 	struct adapter *adapter = pci_get_drvdata(pdev);
 
+#if IS_ENABLED(CONFIG_VFIO_MDEV_NET_DEVICE)
+	cxgb4_unregister_netmdev(&pdev->dev);
+#endif
 	if (!adapter) {
 		pci_release_regions(pdev);
 		return;

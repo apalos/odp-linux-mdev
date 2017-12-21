@@ -29,9 +29,11 @@
 # Makefile for the Intel(R) PRO/1000 ethernet driver
 #
 
+# linaro add our includes
+ccflags-y += -I$(PWD)/include -DCONFIG_VFIO_MDEV_NET_DEVICE_MODULE
 obj-$(CONFIG_E1000E) += e1000e.o
 
 e1000e-objs := 82571.o ich8lan.o 80003es2lan.o \
 	       mac.o manage.o nvm.o phy.o \
-	       param.o ethtool.o netdev.o ptp.o
-
+	       param.o ethtool.o netdev.o ptp.o \
+	       e1000e_netmdev.o
