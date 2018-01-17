@@ -69,8 +69,8 @@ static int i40e_init_vdev(struct mdev_device *mdev)
 	start = pci_resource_start(pdev, VFIO_PCI_BAR0_REGION_INDEX);
 	size = pci_resource_len(pdev, VFIO_PCI_BAR0_REGION_INDEX);
 	offset = VFIO_PCI_INDEX_TO_OFFSET(VFIO_PCI_BAR0_REGION_INDEX);
-	mdev_net_add_essential(region++, VFIO_NET_MMIO, VFIO_NET_MDEV_BARS,
-			       offset, start >> PAGE_SHIFT, size >> PAGE_SHIFT);
+	mdev_net_add_essential(region++, VFIO_NET_MDEV_MMIO, 0, offset,
+			       start >> PAGE_SHIFT, size >> PAGE_SHIFT);
 
 	offset_cnt = netmdev->vdev.bus_regions;
 
@@ -81,8 +81,8 @@ static int i40e_init_vdev(struct mdev_device *mdev)
 		start = virt_to_phys(rxq->desc);
 		size = PAGE_ALIGN(rxq->size);
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
-		mdev_net_add_essential(region++, VFIO_NET_DESCRIPTORS,
-				       VFIO_NET_MDEV_RX, offset,
+		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_RING, 0,
+				       offset,
 				       start >> PAGE_SHIFT, size >> PAGE_SHIFT);
 	}
 
@@ -93,8 +93,8 @@ static int i40e_init_vdev(struct mdev_device *mdev)
 		start = virt_to_phys(txq->desc);
 		size = PAGE_ALIGN(txq->size);
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
-		mdev_net_add_essential(region++, VFIO_NET_DESCRIPTORS,
-				       VFIO_NET_MDEV_TX, offset,
+		mdev_net_add_essential(region++, VFIO_NET_MDEV_TX_RING, 0,
+				       offset,
 				       start >> PAGE_SHIFT, size >> PAGE_SHIFT);
 	}
 

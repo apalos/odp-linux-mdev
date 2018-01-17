@@ -80,8 +80,8 @@ static int cxgb4_init_vdev(struct mdev_device *mdev)
 	start = pci_resource_start(pdev, bar_index);
 	size = pci_resource_len(pdev, bar_index);
 	offset = VFIO_PCI_INDEX_TO_OFFSET(bar_index);
-	mdev_net_add_essential(region++, VFIO_NET_MMIO, VFIO_NET_MDEV_BARS,
-			       offset, start >> PAGE_SHIFT, size >> PAGE_SHIFT);
+	mdev_net_add_essential(region++, VFIO_NET_MDEV_MMIO, 0, offset,
+			       start >> PAGE_SHIFT, size >> PAGE_SHIFT);
 	offset_cnt = netmdev->vdev.bus_regions;
 
 	/* Rx + Rx free list */
@@ -91,8 +91,8 @@ static int cxgb4_init_vdev(struct mdev_device *mdev)
 		struct sge *s = &pi->adapter->sge;
 
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
-		mdev_net_add_essential(region, VFIO_NET_DESCRIPTORS,
-				       VFIO_NET_MDEV_RX, offset, 0, 0);
+		mdev_net_add_essential(region, VFIO_NET_MDEV_RX_RING, 0,
+				       offset, 0, 0);
 
 		start = virt_to_phys(iq->desc);
 		size = PAGE_ALIGN(iq->size * iq->iqe_len);
@@ -119,8 +119,8 @@ static int cxgb4_init_vdev(struct mdev_device *mdev)
 		start = virt_to_phys(q->desc);
 		size = PAGE_ALIGN(q->size * sizeof(*q->desc) + s->stat_len);
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
-		mdev_net_add_essential(region++, VFIO_NET_DESCRIPTORS,
-				       VFIO_NET_MDEV_TX, offset,
+		mdev_net_add_essential(region++, VFIO_NET_MDEV_TX_RING, 0,
+				       offset,
 				       start >> PAGE_SHIFT, size >> PAGE_SHIFT);
 	}
 
