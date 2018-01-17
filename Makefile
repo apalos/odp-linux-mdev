@@ -6,7 +6,7 @@ obj-m += i40e/
 UNAME_R := $(shell uname -r)
 
 all:
-	make -C /lib/modules/$(UNAME_R)/build M=$(PWD) V=1
+	make -C /lib/modules/$(UNAME_R)/build M=$(PWD) # V=1
 
 clean:
 	make -C /lib/modules/$(UNAME_R)/build M=~/odp-mdev-linux/ clean

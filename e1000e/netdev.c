@@ -45,6 +45,8 @@
 #include <linux/prefetch.h>
 
 #include "e1000.h"
+
+#include <linux/net_mdev.h>
 #include "e1000e_netmdev.h"
 
 #define DRV_EXTRAVERSION "-k"
