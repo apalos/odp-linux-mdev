@@ -4967,9 +4967,6 @@ static ssize_t rx_queue_doorbell_desc_key_show(struct netdev_rx_queue *queue,
 
 	BUG_ON(rxq_idx >= pi->nqsets);
 
-	/* FIXME disable interrupts instead of delaying them */
-	doorbell_key = SEINTARM_V(doorbell_key);
-
 	if (q->bar2_addr)
 		doorbell_key |= INGRESSQID_V(q->bar2_qid);
 	else

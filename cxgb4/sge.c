@@ -2748,7 +2748,9 @@ int t4_sge_alloc_rxq(struct adapter *adap, struct sge_rspq *iq, bool fwevtq,
 	c.type_to_iqandstindex = htonl(FW_IQ_CMD_TYPE_V(FW_IQ_TYPE_FL_INT_CAP) |
 		FW_IQ_CMD_IQASYNCH_V(fwevtq) | FW_IQ_CMD_VIID_V(pi->viid) |
 		FW_IQ_CMD_IQANDST_V(intr_idx < 0) |
-		FW_IQ_CMD_IQANUD_V(UPDATEDELIVERY_INTERRUPT_X) |
+		/* PIDX update on packet queues, IRQ on control queue */
+		FW_IQ_CMD_IQANUD_V(fl ? UPDATEDELIVERY_STATUS_PAGE_X :
+			UPDATEDELIVERY_INTERRUPT_X) |
 		FW_IQ_CMD_IQANDSTINDEX_V(intr_idx >= 0 ? intr_idx :
 							-intr_idx - 1));
 	c.iqdroprss_to_iqesize = htons(FW_IQ_CMD_IQPCIECH_V(pi->tx_chan) |
