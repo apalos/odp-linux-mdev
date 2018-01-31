@@ -55,6 +55,7 @@
 #include "cxgb4_ptp.h"
 
 extern int cxgb4_mdev;
+extern int rx_mode;
 
 /*
  * Rx buffer size.  We use largish buffers if possible but settle for single
@@ -2783,7 +2784,8 @@ int t4_sge_alloc_rxq(struct adapter *adap, struct sge_rspq *iq, bool fwevtq,
 			goto fl_nomem;
 
 		flsz = fl->size / 8 + s->stat_len / sizeof(struct tx_desc);
-		c.iqns_to_fl0congen |= htonl(FW_IQ_CMD_FL0PACKEN_F |
+		c.iqns_to_fl0congen |= htonl((rx_mode ?
+					     0 : FW_IQ_CMD_FL0PACKEN_F) |
 					     FW_IQ_CMD_FL0FETCHRO_V(relaxed) |
 					     FW_IQ_CMD_FL0DATARO_V(relaxed) |
 					     FW_IQ_CMD_FL0PADEN_F);

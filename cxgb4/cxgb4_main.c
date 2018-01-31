@@ -188,6 +188,9 @@ module_param(cxgb4_mdev, int, 0);
 MODULE_PARM_DESC(cxgb4_mdev, "Support mediated device setup. Traffic will *not* work");
 #endif
 
+int rx_mode;
+module_param(rx_mode, int, 0444);
+MODULE_PARM_DESC(rx_mode, "0 - tape mode (default), 1 - slot mode");
 
 static void link_report(struct net_device *dev)
 {
@@ -4306,8 +4309,13 @@ static void cfg_queues(struct adapter *adap)
 	for (i = 0; i < ARRAY_SIZE(s->ethrxq); i++) {
 		struct sge_eth_rxq *r = &s->ethrxq[i];
 
-		init_rspq(adap, &r->rspq, 5, 10, 1024, 64);
-		r->fl.size = 72;
+		if (!rx_mode) {
+			init_rspq(adap, &r->rspq, 5, 10, 1024, 64);
+			r->fl.size = 72;
+		} else {
+			init_rspq(adap, &r->rspq, 5, 10, 512, 64);
+			r->fl.size = 512;
+		}
 	}
 
 	for (i = 0; i < ARRAY_SIZE(s->ethtxq); i++)
