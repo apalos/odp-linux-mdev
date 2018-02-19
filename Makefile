@@ -2,6 +2,7 @@ obj-m += mdev/
 obj-m += cxgb4/
 obj-m += e1000e/
 obj-m += i40e/
+obj-m += cavium/
 
 UNAME_R := $(shell uname -r)
 

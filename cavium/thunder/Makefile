@@ -2,6 +2,8 @@
 # Makefile for Cavium's Thunder ethernet device
 #
 
+ccflags-y += -DCONFIG_VFIO_MDEV_NET_DEVICE_MODULE
+
 obj-$(CONFIG_THUNDER_NIC_RGX) += thunder_xcv.o
 obj-$(CONFIG_THUNDER_NIC_BGX) += thunder_bgx.o
 obj-$(CONFIG_THUNDER_NIC_PF) += nicpf.o
