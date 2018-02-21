@@ -15,6 +15,7 @@
 #ifdef CONFIG_X86
 #include <asm/set_memory.h>
 #include <asm/pat.h>
+#define MDEV_WC
 #endif
 #include <linux/mm.h>
 #include "mdev_net_private.h"
@@ -23,7 +24,6 @@
 #define DRIVER_AUTHOR   "Linaro"
 #define DRIVER_DESC     "VFIO based driver for mediated network device"
 
-#define MDEV_WC
 /* globals */
 struct netmdev_driver netmdev_known_drivers[256];
 int netmdev_known_drivers_count = 0;
