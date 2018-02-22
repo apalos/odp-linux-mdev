@@ -77,7 +77,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		start = virt_to_phys(rbdr->dmem.base);
 		size = PAGE_ALIGN(rbdr->dmem.size);
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
-		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_RING, 0,
+		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_BUFFER_POOL, 0,
 				       offset,
 				       start >> PAGE_SHIFT, size >> PAGE_SHIFT);
 	}
