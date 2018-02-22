@@ -28,6 +28,10 @@
 
 #define DRV_NAME	"thunder-nicvf"
 #define DRV_VERSION	"1.0"
+#if IS_ENABLED(CONFIG_VFIO_MDEV_NET_DEVICE)
+void nicvf_register_netmdev(struct device *dev);
+void nicvf_unregister_netmdev(struct device *dev);
+#endif
 
 /* Supported devices */
 static const struct pci_device_id nicvf_id_table[] = {
@@ -1905,6 +1909,9 @@ static int nicvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	nic->msg_enable = debug;
 
 	nicvf_set_ethtool_ops(netdev);
+#if IS_ENABLED(CONFIG_VFIO_MDEV_NET_DEVICE)
+	nicvf_register_netmdev(&pdev->dev);
+#endif
 
 	return 0;
 
@@ -1931,6 +1938,9 @@ static void nicvf_remove(struct pci_dev *pdev)
 	if (!netdev)
 		return;
 
+#if IS_ENABLED(CONFIG_VFIO_MDEV_NET_DEVICE)
+	nicvf_register_netmdev(&pdev->dev);
+#endif
 	nic = netdev_priv(netdev);
 	pnetdev = nic->pnicvf->netdev;
 
