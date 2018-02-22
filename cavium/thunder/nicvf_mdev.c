@@ -40,6 +40,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 	struct nicvf *nic = netdev_priv(netdev);
 	struct pci_dev *pdev = nic->pdev;
 	struct mdev_net_region *region;
+	struct queue_set *qs = nic->qs;
 	int i;
 	int alloc_regions;
 	phys_addr_t start;
@@ -49,7 +50,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 	netmdev->vdev.bus_regions = VFIO_PCI_NUM_REGIONS;
 	netmdev->vdev.extra_regions = nic->qs->rbdr_cnt + nic->qs->sq_cnt +
 		nic->qs->cq_cnt;
-	alloc_regions = netmdev->vdev.extra_regions;
+	alloc_regions = netmdev->vdev.extra_regions + 1;
 
 	netmdev->vdev.bus_flags = VFIO_DEVICE_FLAGS_PCI;
 	netmdev->vdev.num_irqs = 1;
@@ -75,7 +76,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		struct rbdr *rbdr = &nic->qs->rbdr[i];
 
 		start = virt_to_phys(rbdr->dmem.base);
-		size = PAGE_ALIGN(rbdr->dmem.size);
+		size = PAGE_ALIGN(qs->rbdr_len * sizeof(struct rbdr_entry_t));
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_BUFFER_POOL, 0,
 				       offset,
@@ -87,7 +88,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		struct cmp_queue *cq = &nic->qs->cq[i];
 
 		start = virt_to_phys(cq->dmem.base);
-		size = PAGE_ALIGN(cq->dmem.size);
+		size = PAGE_ALIGN(qs->cq_len * CMP_QUEUE_DESC_SIZE);
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_RING, 0,
 				       offset,
@@ -99,7 +100,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		struct snd_queue *sq = &nic->qs->sq[i];
 
 		start = virt_to_phys(sq->dmem.base);
-		size = PAGE_ALIGN(sq->dmem.size);
+		size = PAGE_ALIGN(qs->sq_len * SND_QUEUE_DESC_SIZE);
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_TX_RING, 0,
 				       offset,
