@@ -1606,6 +1606,7 @@ static void nicvf_tx_timeout(struct net_device *dev)
 static void nicvf_reset_task(struct work_struct *work)
 {
 	struct nicvf *nic;
+	return;
 
 	nic = container_of(work, struct nicvf, reset_task);
 
@@ -1939,7 +1940,7 @@ static void nicvf_remove(struct pci_dev *pdev)
 		return;
 
 #if IS_ENABLED(CONFIG_VFIO_MDEV_NET_DEVICE)
-	nicvf_register_netmdev(&pdev->dev);
+	nicvf_unregister_netmdev(&pdev->dev);
 #endif
 	nic = netdev_priv(netdev);
 	pnetdev = nic->pnicvf->netdev;
