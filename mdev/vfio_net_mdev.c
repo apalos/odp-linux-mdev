@@ -12,10 +12,14 @@
 #include <uapi/linux/net_mdev.h>
 #include "mdev_private.h"
 
+#define MDEV_WC
+
 #ifdef CONFIG_X86
 #include <asm/set_memory.h>
 #include <asm/pat.h>
-#define MDEV_WC
+#else
+#define set_memory_wc(__a, __b)
+#define set_memory_wb(__a, __b)
 #endif
 #include <linux/mm.h>
 #include "mdev_net_private.h"
