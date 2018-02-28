@@ -27,11 +27,23 @@
 #include <linux/vfio.h>
 #include <linux/mdev.h>
 #include <linux/net_mdev.h>
+#include <asm/cacheflush.h>
 
 #include "nic.h"
 #include "nicvf_queues.h"
 
 static void nicvf_destroy_vdev(struct mdev_device *mdev);
+
+/* FIXME: last page can be left in cache with certain start/end combinations */
+static nicvf_evict_dcache_range(void *start, void *end)
+{
+	void *ptr = start;
+
+	while (ptr < end) {
+		flush_dcache_page(virt_to_page(ptr));
+		ptr += PAGE_SIZE;
+	}
+}
 
 static int nicvf_init_vdev(struct mdev_device *mdev)
 {
@@ -77,6 +89,17 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 
 		start = virt_to_phys(rbdr->dmem.base);
 		size = PAGE_ALIGN(qs->rbdr_len * sizeof(struct rbdr_entry_t));
+
+		/* Poison and cache evict the area */
+		memset(rbdr->desc, 0xa5, size);
+		nicvf_evict_dcache_range(rbdr->desc, rbdr->desc + size);
+
+		/*
+		 * Assure no one is going to access descs from kernel space
+		 * to avoid cache aliasing issues.
+		 */
+		rbdr->desc = NULL;
+
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_BUFFER_POOL, 0,
 				       offset,
@@ -89,6 +112,17 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 
 		start = virt_to_phys(cq->dmem.base);
 		size = PAGE_ALIGN(qs->cq_len * CMP_QUEUE_DESC_SIZE);
+
+		/* Poison and cache evict the area */
+		memset(cq->desc, 0xa5, size);
+		nicvf_evict_dcache_range(cq->desc, cq->desc + size);
+
+		/*
+		 * Assure no one is going to access descs from kernel space
+		 * to avoid cache aliasing issues.
+		 */
+		cq->desc = NULL;
+
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_RING, 0,
 				       offset,
@@ -101,6 +135,17 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 
 		start = virt_to_phys(sq->dmem.base);
 		size = PAGE_ALIGN(qs->sq_len * SND_QUEUE_DESC_SIZE);
+
+		/* Poison and cache evict the area */
+		memset(sq->desc, 0xa5, size);
+		nicvf_evict_dcache_range(sq->desc, sq->desc + size);
+
+		/*
+		 * Assure no one is going to access descs from kernel space
+		 * to avoid cache aliasing issues.
+		 */
+		sq->desc = NULL;
+
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_TX_RING, 0,
 				       offset,
