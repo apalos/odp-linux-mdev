@@ -60,7 +60,7 @@ static int nicvf_alloc_q_desc_mem(struct nicvf *nic, struct q_desc_mem *dmem,
 	dmem->size = (desc_size * q_len) + align_bytes;
 	/* Save address, need it while freeing */
 	dmem->unalign_base = dma_zalloc_coherent(&nic->pdev->dev, dmem->size,
-						&dmem->dma, GFP_KERNEL);
+						&dmem->dma, GFP_ATOMIC);
 	if (!dmem->unalign_base)
 		return -ENOMEM;
 
