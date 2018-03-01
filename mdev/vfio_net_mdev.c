@@ -18,8 +18,8 @@
 #include <asm/set_memory.h>
 #include <asm/pat.h>
 #else
-#define set_memory_wc(__a, __b)
-#define set_memory_wb(__a, __b)
+#define set_memory_wc(__a, __b) ({int __retval = 1; __retval;})
+#define set_memory_wb(__a, __b) ({int __retval = 1; __retval;})
 #endif
 #include <linux/mm.h>
 #include "mdev_net_private.h"
