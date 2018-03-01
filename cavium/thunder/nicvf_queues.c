@@ -300,6 +300,7 @@ static int  nicvf_init_rbdr(struct nicvf *nic, struct rbdr *rbdr,
 	rbdr->pgalloc = 0;
 
 	nic->rb_page = NULL;
+#if 0
 	for (idx = 0; idx < ring_len; idx++) {
 		err = nicvf_alloc_rcv_buffer(nic, rbdr, GFP_KERNEL,
 					     RCV_FRAG_LEN, &rbuf);
@@ -312,6 +313,7 @@ static int  nicvf_init_rbdr(struct nicvf *nic, struct rbdr *rbdr,
 		desc = GET_RBDR_DESC(rbdr, idx);
 		desc->buf_addr = rbuf & ~(NICVF_RCV_BUF_ALIGN_BYTES - 1);
 	}
+#endif
 
 	nicvf_get_page(nic);
 
@@ -336,6 +338,7 @@ static void nicvf_free_rbdr(struct nicvf *nic, struct rbdr *rbdr)
 	head = rbdr->head;
 	tail = rbdr->tail;
 
+#if 0
 	/* Release page references */
 	while (head != tail) {
 		desc = GET_RBDR_DESC(rbdr, head);
@@ -374,6 +377,7 @@ static void nicvf_free_rbdr(struct nicvf *nic, struct rbdr *rbdr)
 		}
 		head++;
 	}
+#endif
 
 	/* Free RBDR ring */
 	nicvf_free_q_desc_mem(nic, &rbdr->dmem);
@@ -391,6 +395,8 @@ static void nicvf_refill_rbdr(struct nicvf *nic, gfp_t gfp)
 	struct rbdr_entry_t *desc;
 	u64 rbuf;
 	int new_rb = 0;
+
+	return;
 
 refill:
 	if (!rbdr_idx)
@@ -558,6 +564,7 @@ static int nicvf_init_snd_queue(struct nicvf *nic,
 void nicvf_unmap_sndq_buffers(struct nicvf *nic, struct snd_queue *sq,
 			      int hdr_sqe, u8 subdesc_cnt)
 {
+#if 0
 	u8 idx;
 	struct sq_gather_subdesc *gather;
 
@@ -571,6 +578,7 @@ void nicvf_unmap_sndq_buffers(struct nicvf *nic, struct snd_queue *sq,
 				     gather->size, DMA_TO_DEVICE,
 				     DMA_ATTR_SKIP_CPU_SYNC);
 	}
+#endif
 }
 
 static void nicvf_free_snd_queue(struct nicvf *nic, struct snd_queue *sq)
@@ -590,6 +598,7 @@ static void nicvf_free_snd_queue(struct nicvf *nic, struct snd_queue *sq)
 				  sq->dmem.q_len * TSO_HEADER_SIZE,
 				  sq->tso_hdrs, sq->tso_hdrs_phys);
 
+#if 0
 	/* Free pending skbs in the queue */
 	smp_rmb();
 	while (sq->head != sq->tail) {
@@ -621,6 +630,7 @@ next:
 		sq->head++;
 		sq->head &= (sq->dmem.q_len - 1);
 	}
+#endif
 	kfree(sq->skbuff);
 	kfree(sq->xdp_page);
 	nicvf_free_q_desc_mem(nic, &sq->dmem);
@@ -939,9 +949,11 @@ static void nicvf_rbdr_config(struct nicvf *nic, struct queue_set *qs,
 	nicvf_queue_reg_write(nic, NIC_QSET_RBDR_0_1_CFG,
 			      qidx, *(u64 *)&rbdr_cfg);
 
+#if 0
 	/* Notify HW */
 	nicvf_queue_reg_write(nic, NIC_QSET_RBDR_0_1_DOOR,
 			      qidx, qs->rbdr_len - 1);
+#endif
 
 	/* Set threshold value for interrupt generation */
 	nicvf_queue_reg_write(nic, NIC_QSET_RBDR_0_1_THRESH,
@@ -1182,6 +1194,7 @@ void nicvf_sq_free_used_descs(struct net_device *netdev, struct snd_queue *sq,
 
 	head = nicvf_queue_reg_read(nic, NIC_QSET_SQ_0_7_HEAD, qidx) >> 4;
 	tail = nicvf_queue_reg_read(nic, NIC_QSET_SQ_0_7_TAIL, qidx) >> 4;
+#if 0
 	while (sq->head != head) {
 		hdr = (struct sq_hdr_subdesc *)GET_SQ_DESC(sq, sq->head);
 		if (hdr->subdesc_type != SQ_DESC_TYPE_HEADER) {
@@ -1196,6 +1209,7 @@ void nicvf_sq_free_used_descs(struct net_device *netdev, struct snd_queue *sq,
 			     (atomic64_t *)&netdev->stats.tx_bytes);
 		nicvf_put_sq_desc(sq, hdr->subdesc_cnt + 1);
 	}
+#endif
 }
 
 /* XDP Transmit APIs */
@@ -1220,6 +1234,7 @@ nicvf_xdp_sq_add_hdr_subdesc(struct snd_queue *sq, int qentry,
 {
 	struct sq_hdr_subdesc *hdr;
 
+#if 0
 	hdr = (struct sq_hdr_subdesc *)GET_SQ_DESC(sq, qentry);
 	memset(hdr, 0, SND_QUEUE_DESC_SIZE);
 	hdr->subdesc_type = SQ_DESC_TYPE_HEADER;
@@ -1227,6 +1242,7 @@ nicvf_xdp_sq_add_hdr_subdesc(struct snd_queue *sq, int qentry,
 	hdr->tot_len = len;
 	hdr->post_cqe = 1;
 	sq->xdp_page[qentry] = (u64)virt_to_page((void *)data);
+#endif
 }
 
 int nicvf_xdp_sq_append_pkt(struct nicvf *nic, struct snd_queue *sq,
@@ -1334,6 +1350,8 @@ nicvf_sq_add_hdr_subdesc(struct nicvf *nic, struct snd_queue *sq, int qentry,
 		unsigned char *hdr;
 	} ip;
 
+	return;
+
 	ip.hdr = skb_network_header(skb);
 	hdr = (struct sq_hdr_subdesc *)GET_SQ_DESC(sq, qentry);
 	memset(hdr, 0, SND_QUEUE_DESC_SIZE);
@@ -1391,6 +1409,7 @@ nicvf_sq_add_hdr_subdesc(struct nicvf *nic, struct snd_queue *sq, int qentry,
 static inline void nicvf_sq_add_gather_subdesc(struct snd_queue *sq, int qentry,
 					       int size, u64 data)
 {
+#if 0
 	struct sq_gather_subdesc *gather;
 
 	qentry &= (sq->dmem.q_len - 1);
@@ -1401,6 +1420,7 @@ static inline void nicvf_sq_add_gather_subdesc(struct snd_queue *sq, int qentry,
 	gather->ld_type = NIC_SEND_LD_TYPE_E_LDD;
 	gather->size = size;
 	gather->addr = data;
+#endif
 }
 
 /* Add HDR + IMMEDIATE subdescriptors right after descriptors of a TSO
@@ -1410,6 +1430,7 @@ static inline void nicvf_sq_add_gather_subdesc(struct snd_queue *sq, int qentry,
 static inline void nicvf_sq_add_cqe_subdesc(struct snd_queue *sq, int qentry,
 					    int tso_sqe, struct sk_buff *skb)
 {
+#if 0
 	struct sq_imm_subdesc *imm;
 	struct sq_hdr_subdesc *hdr;
 
@@ -1432,6 +1453,7 @@ static inline void nicvf_sq_add_cqe_subdesc(struct snd_queue *sq, int qentry,
 	memset(imm, 0, SND_QUEUE_DESC_SIZE);
 	imm->subdesc_type = SQ_DESC_TYPE_IMMEDIATE;
 	imm->len = 1;
+#endif
 }
 
 static inline void nicvf_sq_doorbell(struct nicvf *nic, struct sk_buff *skb,

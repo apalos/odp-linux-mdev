@@ -772,6 +772,8 @@ static int nicvf_cq_intr_handler(struct net_device *netdev, u8 cq_idx,
 	struct snd_queue *sq = &qs->sq[cq_idx];
 	unsigned int tx_pkts = 0, tx_bytes = 0, txq_idx;
 
+	return;
+
 	spin_lock_bh(&cq->lock);
 loop:
 	processed_cqe = 0;
@@ -1171,10 +1173,10 @@ static netdev_tx_t nicvf_xmit(struct sk_buff *skb, struct net_device *netdev)
 	int tmp;
 
 	/* Check for minimum packet length */
-	if (skb->len <= ETH_HLEN) {
+	// if (skb->len <= ETH_HLEN) {
 		dev_kfree_skb(skb);
 		return NETDEV_TX_OK;
-	}
+	//}
 
 	/* In XDP case, initial HW tx queues are used for XDP,
 	 * but stack's queue mapping starts at '0', so skip the
