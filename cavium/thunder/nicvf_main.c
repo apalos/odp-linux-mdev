@@ -772,7 +772,7 @@ static int nicvf_cq_intr_handler(struct net_device *netdev, u8 cq_idx,
 	struct snd_queue *sq = &qs->sq[cq_idx];
 	unsigned int tx_pkts = 0, tx_bytes = 0, txq_idx;
 
-	return;
+	return 0;
 
 	spin_lock_bh(&cq->lock);
 loop:

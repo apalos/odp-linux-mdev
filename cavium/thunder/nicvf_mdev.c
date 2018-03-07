@@ -90,6 +90,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		start = virt_to_phys(rbdr->dmem.base);
 		size = PAGE_ALIGN(qs->rbdr_len * sizeof(struct rbdr_entry_t));
 
+#if 0
 		/* Poison and cache evict the area */
 		memset(rbdr->desc, 0xa5, size);
 		nicvf_evict_dcache_range(rbdr->desc, rbdr->desc + size);
@@ -99,6 +100,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		 * to avoid cache aliasing issues.
 		 */
 		rbdr->desc = NULL;
+#endif
 
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_BUFFER_POOL, 0,
@@ -113,6 +115,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		start = virt_to_phys(cq->dmem.base);
 		size = PAGE_ALIGN(qs->cq_len * CMP_QUEUE_DESC_SIZE);
 
+#if 0
 		/* Poison and cache evict the area */
 		memset(cq->desc, 0xa5, size);
 		nicvf_evict_dcache_range(cq->desc, cq->desc + size);
@@ -122,6 +125,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		 * to avoid cache aliasing issues.
 		 */
 		cq->desc = NULL;
+#endif
 
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_RX_RING, 0,
@@ -136,6 +140,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		start = virt_to_phys(sq->dmem.base);
 		size = PAGE_ALIGN(qs->sq_len * SND_QUEUE_DESC_SIZE);
 
+#if 0
 		/* Poison and cache evict the area */
 		memset(sq->desc, 0xa5, size);
 		nicvf_evict_dcache_range(sq->desc, sq->desc + size);
@@ -145,6 +150,7 @@ static int nicvf_init_vdev(struct mdev_device *mdev)
 		 * to avoid cache aliasing issues.
 		 */
 		sq->desc = NULL;
+#endif
 
 		offset = VFIO_PCI_INDEX_TO_OFFSET(offset_cnt++);
 		mdev_net_add_essential(region++, VFIO_NET_MDEV_TX_RING, 0,

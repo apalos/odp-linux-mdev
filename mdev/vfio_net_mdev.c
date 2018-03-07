@@ -320,7 +320,8 @@ static int netmdev_vfio_mmap_dma(struct mdev_device *mdev,
 	 */
 	mapping->cookie =
 	    dma_alloc_attrs(mapping->dev, mapping->size, &mapping->iova,
-			    GFP_KERNEL,
+			    // GFP_KERNEL,
+			    GFP_ATOMIC,
 #ifndef MDEV_WC
 			    DMA_ATTR_NO_KERNEL_MAPPING |
 #endif
