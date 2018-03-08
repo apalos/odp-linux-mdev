@@ -4,4 +4,5 @@ mdev-y := mdev_core.o mdev_sysfs.o mdev_driver.o
 
 obj-$(CONFIG_VFIO_MDEV) += mdev.o
 obj-$(CONFIG_VFIO_MDEV_DEVICE) += vfio_mdev.o
+obj-$(CONFIG_VFIO_IOMMU_TYPE1) += vfio_iommu_type1.o
 obj-m += vfio_net_mdev.o
