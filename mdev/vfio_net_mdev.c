@@ -12,15 +12,10 @@
 #include <uapi/linux/net_mdev.h>
 #include "mdev_private.h"
 
-#define MDEV_WC
-
 #ifdef CONFIG_X86
-#include <asm/set_memory.h>
 #include <asm/pat.h>
-#else
-#define set_memory_wc(__a, __b) ({int __retval = 1; __retval;})
-#define set_memory_wb(__a, __b) ({int __retval = 1; __retval;})
 #endif
+
 #include <linux/mm.h>
 #include "mdev_net_private.h"
 
@@ -238,168 +233,6 @@ static void netmdev_dev_release(struct mdev_device *mdev)
 	return;
 }
 
-/*
- * Allocate DMA area and map it where the userland asks.
- * Userland need to mmap an area WITHOUT allocating pages:
- * mmap(vaddr,size, PROT_READ | PROT_WRITE, MAP_SHARED |
- * MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0
- * MAP_NORESERVE ensures only VA space is booked, no pages are mapped.
- * The mapping must be the entire area, not partial on the vma.
- */
-static int netmdev_vfio_mmap_dma(struct mdev_device *mdev,
-				 struct vfio_iommu_type1_dma_map *param)
-{
-	struct netmdev *netmdev = mdev_get_drvdata(mdev);
-	enum dma_data_direction direction;
-	struct vm_area_struct *vma;
-	struct iovamap *mapping;
-#ifdef MDEV_WC
-	int ret;
-#endif
-
-	if (param->flags & ~(VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE))
-		return -EINVAL;
-
-	if ((param->size & ~PAGE_MASK) || (param->vaddr & ~PAGE_MASK))
-		return -EINVAL;
-
-	/*
-	 * locates the containing vma for the required map.vaddr.
-	 * The vma must point to the entire zone allocated by mmap in
-	 * userland.
-	 */
-	vma = find_vma(current->mm, param->vaddr);
-	if (!vma)
-		return -EFAULT;
-
-	if (param->vaddr + param->size > vma->vm_end)
-		return -EINVAL;
-
-	if (param->flags & VFIO_DMA_MAP_FLAG_READ) {
-		if (param->flags & VFIO_DMA_MAP_FLAG_WRITE)
-			direction = DMA_BIDIRECTIONAL;
-		else
-			direction = DMA_TO_DEVICE;
-	} else {
-		if (param->flags & VFIO_DMA_MAP_FLAG_WRITE)
-			direction = DMA_FROM_DEVICE;
-		else
-			return -EINVAL;
-	}
-
-	/* Allocate new netmdev mapping */
-	mapping = kzalloc(sizeof(*mapping), GFP_KERNEL);
-	if (!mapping)
-		return -ENOMEM;
-
-	INIT_LIST_HEAD(&mapping->list);
-	mapping->dev = mdev_parent_dev(mdev);
-	mapping->size = param->size;
-	mapping->direction = direction;
-
-
-	/*
-	 * TODO: allocate close to NUMA node like ixgbe does
-	 *   set_dev_node(mapping->dev, dma_node);
-	 *   dma_alloc_coherent();
-	 *   set_dev_node(dev, orig_node);
-	 */
-	/*
-	 * TODO: Not all platforms support cache coherent DMA.
-	 * dma_alloc_coherent() will fallback to allocate non-cacheable
-	 * memory which won't provide acceptable packet IO performance.
-	 * We shall implement non-coherent allocation and cache sync API
-	 * to invalidate cache in RX path and flush cache in TX path.
-	 * Possible solution is to use DMA_ATTR_NON_CONSISTENT with
-	 * dma_alloc_attrs() and let the application request cache
-	 * synchronization via a syscall.
-	 */
-	/*
-	 * TODO: add dev_hold() and dev_put() to make sure we don't exit
-	 * before all mappings are removed from userspace.
-	 */
-	mapping->cookie =
-	    dma_alloc_attrs(mapping->dev, mapping->size, &mapping->iova,
-			    GFP_KERNEL,
-#ifndef MDEV_WC
-			    DMA_ATTR_NO_KERNEL_MAPPING |
-#endif
-			    DMA_ATTR_WRITE_COMBINE);
-	if (!mapping->cookie) {
-		kfree(mapping);
-		return -EFAULT;
-	}
-
-#ifdef MDEV_WC
-	ret = set_memory_wc((unsigned long)(mapping->cookie),
-			    mapping->size >> PAGE_SHIFT);
-	if (!ret)
-		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
-	if (io_remap_pfn_range(vma, vma->vm_start,
-			    page_to_pfn(virt_to_page(mapping->cookie)),
-			    mapping->size, vma->vm_page_prot) < 0) {
-		set_memory_wb((unsigned long)mapping->cookie,
-			      mapping->size >> PAGE_SHIFT);
-		dma_free_attrs(mapping->dev, mapping->size,
-			       mapping->cookie, mapping->iova,
-			       DMA_ATTR_WRITE_COMBINE);
-		kfree(mapping);
-		return -EFAULT;
-	}
-#else
-	if (dma_mmap_attrs
-	    (mapping->dev, vma, mapping->cookie, mapping->iova,
-	     mapping->size,
-	     DMA_ATTR_NO_KERNEL_MAPPING | DMA_ATTR_WRITE_COMBINE) < 0) {
-		dma_free_attrs(mapping->dev, mapping->size,
-			       mapping->cookie, mapping->iova,
-			       DMA_ATTR_NO_KERNEL_MAPPING |
-			       DMA_ATTR_WRITE_COMBINE);
-		kfree(mapping);
-		return -EFAULT;
-	}
-#endif
-	/* Pass the IOVA to userspace */
-	param->iova = mapping->iova;
-
-	dev_dbg(&mdev->dev, "new iommu dma mapping %d @ 0x%p -> 0x@%llx\n",
-		 mapping->size, mapping->cookie, mapping->iova);
-
-	list_add_tail(&mapping->list, &netmdev->mapping_list_head);
-
-	return 0;
-}
-
-static int netmdev_vfio_unmmap_dma(struct mdev_device *mdev,
-				   struct vfio_iommu_type1_dma_unmap
-				   *param)
-{
-	struct netmdev *netmdev = mdev_get_drvdata(mdev);
-	struct iovamap *mapping, *n;
-
-	list_for_each_entry_safe(mapping, n, &netmdev->mapping_list_head,
-				 list) {
-		if (param->iova == mapping->iova
-		    && param->size == mapping->size) {
-			dev_dbg(&mdev->dev,
-				"remove iommu dma mapping %d @ 0x%p -> 0x@%llx\n",
-				mapping->size, mapping->cookie, mapping->iova);
-#ifdef MDEV_WC
-			set_memory_wb((unsigned long)mapping->cookie,
-				      mapping->size >> PAGE_SHIFT);
-#endif
-			dma_free_attrs(mapping->dev, mapping->size,
-				       mapping->cookie, mapping->iova,
-				       DMA_ATTR_NO_KERNEL_MAPPING |
-				       DMA_ATTR_WRITE_COMBINE);
-			list_del(&mapping->list);
-			return 0;
-		}
-	}
-
-	return -EINVAL;
-}
-
 static struct
 vfio_region_info_cap_sparse_mmap *netmdev_fill_sparse(struct mdev_net_region *region)
 {
@@ -451,8 +284,6 @@ static long netmdev_dev_ioctl(struct mdev_device *mdev, unsigned int cmd,
 	struct vfio_info_cap caps = { .buf = NULL, .size = 0 };
 	struct vfio_region_info_cap_type cap_type;
 	struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
-	struct vfio_iommu_type1_dma_map dma_map;
-	struct vfio_iommu_type1_dma_unmap dma_unmap;
 	int ret = 0;
 	int max_regions = 0;
 	struct mdev_net_region *region;
@@ -568,31 +399,6 @@ static long netmdev_dev_ioctl(struct mdev_device *mdev, unsigned int cmd,
 
 		return copy_to_user((void __user *)arg, &irq_info, minsz) ?
 			-EFAULT : 0;
-	case VFIO_IOMMU_MAP_DMA:
-		minsz = offsetofend(struct vfio_iommu_type1_dma_map, size);
-
-		if (copy_from_user(&dma_map, (void __user *)arg, minsz))
-			ret = -EFAULT;
-
-		if (dma_map.argsz < minsz)
-			return -EINVAL;
-
-		ret = netmdev_vfio_mmap_dma(mdev, &dma_map);
-		if (ret < 0)
-			return ret;
-
-		return copy_to_user((void __user *)arg, &dma_map, minsz) ?
-			-EFAULT : 0;
-	case VFIO_IOMMU_UNMAP_DMA:
-		minsz = offsetofend(struct vfio_iommu_type1_dma_unmap, size);
-
-		if (copy_from_user(&dma_unmap, (void __user *)arg, minsz))
-			ret = -EFAULT;
-
-		if (dma_unmap.argsz < minsz)
-			return -EINVAL;
-
-		return netmdev_vfio_unmmap_dma(mdev, &dma_unmap);
         default:
                 return -EOPNOTSUPP;
 	}
