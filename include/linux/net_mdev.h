@@ -98,5 +98,6 @@ int mdev_net_add_sparse(struct mdev_net_region *region, __u64 offset,
 void mdev_net_add_essential(struct mdev_net_region *region, __u32 type,
 			    __u32 subtype, __u64 offset, unsigned long pfn,
 			    unsigned long nr_pages);
+int vfio_net_mdev_get_group(struct device *dev, void *data);
 
 #endif /* MDEV_H */

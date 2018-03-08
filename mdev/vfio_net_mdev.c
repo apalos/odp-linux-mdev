@@ -586,6 +586,61 @@ void mdev_net_add_essential(struct mdev_net_region *region, __u32 type,
 }
 EXPORT_SYMBOL(mdev_net_add_essential);
 
+int vfio_net_mdev_get_group(struct device *dev, void *data)
+{
+	struct iommu_group **group = data;
+	struct iommu_group *pgroup;
+	struct device *(*mdev_parent)(struct mdev_device *mdev);
+	struct mdev_device *(*dev_to_mdev)(struct device *dev);
+	struct device *pdev;
+	struct mdev_device *mdev;
+	int ret = 1;
+
+	mdev_parent = symbol_get(mdev_parent_dev);
+	if (!mdev_parent)
+		return -ENODEV;
+
+	dev_to_mdev = symbol_get(mdev_from_dev);
+	if (!dev_to_mdev) {
+		symbol_put(mdev_parent_dev);
+		pr_err("Fail to get mdev_from_dev!\n");
+		return -ENODEV;
+	}
+
+	mdev = dev_to_mdev(dev);
+	if (!mdev) {
+		pr_err("Fail to dev_to_mdev!\n");
+		ret = -ENODEV;
+		goto out;
+	}
+	pdev = mdev_parent(mdev);
+	if (!pdev) {
+		pr_err("Fail to parent dev of mdev!\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	/* TODO check if it is net_mdev */
+	pgroup = iommu_group_get(pdev);
+	if (*group && *group != pgroup) {
+		iommu_group_put(pgroup);
+		pr_err("Bus of devs in this group is not matching!\n");
+		ret = -ENODEV;
+		goto out;
+	}
+	printk("Got parent group\n");
+
+	*group = pgroup;
+	iommu_group_put(pgroup);
+
+out:
+	symbol_put(mdev_parent_dev);
+	symbol_put(mdev_from_dev);
+
+	return ret;
+}
+EXPORT_SYMBOL(vfio_net_mdev_get_group);
+
 static int __init netmdev_init(void)
 {
 	memset(netmdev_known_drivers, 0, sizeof(netmdev_known_drivers));

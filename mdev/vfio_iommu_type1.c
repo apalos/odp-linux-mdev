@@ -41,6 +41,7 @@
 #include <linux/notifier.h>
 #include <linux/dma-iommu.h>
 #include <linux/irqdomain.h>
+#include <linux/net_mdev.h>
 
 #define DRIVER_VERSION  "0.2"
 #define DRIVER_AUTHOR   "Alex Williamson <alex.williamson@redhat.com>"
@@ -1199,6 +1200,7 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 	struct vfio_group *group;
 	struct vfio_domain *domain, *d;
 	struct bus_type *bus = NULL, *mdev_bus;
+	int (*net_mdev_type)(struct device *dev, void *data);
 	int ret;
 	bool resv_msi, msi_remap;
 	phys_addr_t resv_msi_base;
@@ -1237,7 +1239,29 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 
 	if (mdev_bus) {
 		if ((bus == mdev_bus) && !iommu_present(bus)) {
+			struct iommu_group *pgroup = NULL;
+
 			symbol_put(mdev_bus_type);
+
+			net_mdev_type = symbol_get(vfio_net_mdev_get_group);
+			if (net_mdev_type) {
+				ret = iommu_group_for_each_dev(iommu_group,
+							       &pgroup,
+							       net_mdev_type);
+				symbol_put(vfio_net_mdev_get_group);
+			}
+
+			if (pgroup) {
+				domain->domain =
+					iommu_group_default_domain(pgroup);
+				INIT_LIST_HEAD(&domain->group_list);
+				list_add(&group->next, &domain->group_list);
+				list_add(&domain->next, &iommu->domain_list);
+				domain->prot |= IOMMU_CACHE;
+				mutex_unlock(&iommu->lock);
+				return 0;
+			}
+
 			if (!iommu->external_domain) {
 				INIT_LIST_HEAD(&domain->group_list);
 				iommu->external_domain = domain;
