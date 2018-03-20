@@ -102,8 +102,10 @@
  * RED accepts pkt if unused CQE < 2304 & >= 2560
  * DROPs pkts if unused CQE < 2304
  */
-#define RQ_PASS_CQ_LVL         192ULL
-#define RQ_DROP_CQ_LVL         184ULL
+// #define RQ_PASS_CQ_LVL         192ULL
+// #define RQ_DROP_CQ_LVL         184ULL
+#define RQ_PASS_CQ_LVL         0ULL
+#define RQ_DROP_CQ_LVL         0ULL
 
 /* RED and Backpressure levels of RBDR for pkt reception
  * For RBDR, level is a measure of fullness i.e 0x0 means empty
@@ -112,7 +114,8 @@
  * RED accepts pkt if unused RBs < 256 & >= 0
  * DROPs pkts if unused RBs < 0
  */
-#define RQ_PASS_RBDR_LVL	8ULL
+// #define RQ_PASS_RBDR_LVL	8ULL
+#define RQ_PASS_RBDR_LVL	0ULL
 #define RQ_DROP_RBDR_LVL	0ULL
 
 /* Descriptor size in bytes */

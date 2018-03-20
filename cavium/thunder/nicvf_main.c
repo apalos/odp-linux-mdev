@@ -963,7 +963,7 @@ static irqreturn_t nicvf_intr_handler(int irq, void *cq_irq)
 	nicvf_disable_intr(nic, NICVF_INTR_CQ, qidx);
 
 	/* Schedule NAPI */
-	napi_schedule_irqoff(&cq_poll->napi);
+	// napi_schedule_irqoff(&cq_poll->napi);
 
 	/* Clear interrupt */
 	nicvf_clear_intr(nic, NICVF_INTR_CQ, qidx);
@@ -1598,6 +1598,8 @@ static void nicvf_get_stats64(struct net_device *netdev,
 static void nicvf_tx_timeout(struct net_device *dev)
 {
 	struct nicvf *nic = netdev_priv(dev);
+
+	return;
 
 	netif_warn(nic, tx_err, dev, "Transmit timed out, resetting\n");
 

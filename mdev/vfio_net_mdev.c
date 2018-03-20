@@ -325,7 +325,7 @@ static int netmdev_vfio_mmap_dma(struct mdev_device *mdev,
 #ifndef MDEV_WC
 			    DMA_ATTR_NO_KERNEL_MAPPING |
 #endif
-			    DMA_ATTR_WRITE_COMBINE);
+			    0 /* DMA_ATTR_WRITE_COMBINE */);
 	if (!mapping->cookie) {
 		kfree(mapping);
 		return -EFAULT;
@@ -343,7 +343,7 @@ static int netmdev_vfio_mmap_dma(struct mdev_device *mdev,
 			      mapping->size >> PAGE_SHIFT);
 		dma_free_attrs(mapping->dev, mapping->size,
 			       mapping->cookie, mapping->iova,
-			       DMA_ATTR_WRITE_COMBINE);
+			       0 /* DMA_ATTR_WRITE_COMBINE */);
 		kfree(mapping);
 		return -EFAULT;
 	}
@@ -660,6 +660,9 @@ static int netmdev_dev_mmap(struct mdev_device *mdev, struct vm_area_struct *vma
 
 	vma->vm_private_data = &netmdev->vdev;
 	vma->vm_pgoff = pfn;
+
+	if (index == 0)
+		vma->vm_page_prot = pgprot_device(vma->vm_page_prot);
 
 	return io_remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
 			       req_len, vma->vm_page_prot);
